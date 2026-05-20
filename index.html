@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>카페인 수혈 지도</title>
+    <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=efddfb39f59d8f50b40de5655470573d&libraries=services"></script>
+    <style>
+        /* 아늑한 카페 & 커피 테마 컬러 정의 */
+        :root {
+            --cafe-roast: #6F4E37;      /* 진한 에스프레소 브라운 */
+            --cafe-latte: #C19A6B;      /* 부드러운 라떼 브라운 */
+            --cafe-cream: #FDFBF7;      /* 따뜻하고 편안한 크림 아이보리 */
+            --cafe-rest: #A3B19B;       /* 휴식을 주는 차분한 말차 그린 */
+            --cafe-border: #E6DCD2;     /* 부드러운 베이지 톤 테두리 */
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            font-family: 'Malgun Gothic', sans-serif;
+            background-color: var(--cafe-cream);
+            color: #333;
+        }
+
+        .container {
+            display: flex;
+            width: 100%;
+            height: 100vh;
+        }
+
+        /* 왼쪽 사이드바 */
+        .sidebar {
+            width: 380px;
+            height: 100%;
+            background: #FAF6F0;
+            border-right: 5px solid var(--cafe-latte);
+            display: flex;
+            flex-direction: column;
+            padding: 25px;
+            z-index: 10;
+            box-shadow: 5px 0 15px rgba(111, 78, 55, 0.1);
+        }
+
+        .search-box h2 {
+            color: var(--cafe-roast);
+            font-size: 24px;
+            margin-bottom: 15px;
+            text-align: center;
+            text-shadow: 1px 1px 0px #fff, 2px 2px 0px var(--cafe-border);
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid var(--cafe-latte);
+            border-radius: 12px;
+            outline: none;
+            font-size: 16px;
+            transition: 0.3s;
+            background-color: #fff;
+        }
+
+        .search-box input:focus {
+            border-color: var(--cafe-roast);
+            box-shadow: 0 0 10px rgba(111, 78, 55, 0.2);
+        }
+
+        /* 탭 스타일 */
+        .tab-container {
+            display: flex;
+            margin-top: 15px;
+            background: #EEF2E6;
+            padding: 4px;
+            border-radius: 8px;
+        }
+
+        .tab-button {
+            flex: 1;
+            padding: 10px 0;
+            border: none;
+            background: none;
+            font-size: 14px;
+            font-weight: bold;
+            color: #777;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: 0.2s;
+        }
+
+        .tab-button.active {
+            background: var(--cafe-roast);
+            color: #fff;
+        }
+
+        /* 결과 리스트 스타일 */
+        #resultList {
+            flex-grow: 1;
+            margin-top: 15px;
+            overflow-y: auto;
+            list-style: none;
+        }
+
+        .result-item {
+            padding: 15px;
+            margin-bottom: 10px;
+            background: #fff;
+            border: 1px solid var(--cafe-border);
+            border-radius: 10px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .result-item:hover {
+            background-color: var(--cafe-rest);
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+        }
+
+        .result-item strong {
+            display: block;
+            margin-bottom: 5px;
+            color: inherit;
+        }
+        
+        .result-item small {
+            color: #666;
+        }
+        .result-item:hover small {
+            color: #eeeeee;
+        }
+
+        /* 오른쪽 지도 */
+        #map {
+            flex-grow: 1;
+            height: 100%;
+        }
+
+        /* 스크롤바 커스텀 */
+        #resultList::-webkit-scrollbar {
+            width: 6px;
+        }
+        #resultList::-webkit-scrollbar-thumb {
+            background: var(--cafe-latte);
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="sidebar">
+        <div class="search-box">
+            <h2>☕ 카페인 수혈 지도 🌿</h2>
+            <input type="text" id="keyword" placeholder="지금 필요한 커피나 카페를 검색해봐!">
+        </div>
+        
+        <div class="tab-container">
+            <button class="tab-button active" onclick="switchTab('brand')">브랜드 커피숍</button>
+            <button class="tab-button" onclick="switchTab('private')">개인 커피숍</button>
+        </div>
+
+        <ul id="resultList"></ul>
+    </div>
+    <div id="map"></div>
+</div>
+
+<script>
+    let map;
+    let currentMarker;
+    let currentTab = 'brand'; 
+    let rawSearchData = [];   
+
+    // 지정된 브랜드 커피숍 리스트 (백다방 -> 빽다방 반영)
+    const brandKeywords = ['스타벅스', '메가커피', '이디야', '더벤티', '빽다방', '할리스', '컴포즈', '투썸', '폴바셋'];
+
+    kakao.maps.load(function() {
+        initMap();
+    });
+
+    function initMap() {
+        const mapContainer
