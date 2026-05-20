@@ -151,6 +151,68 @@
             background: var(--cafe-latte);
             border-radius: 10px;
         }
+
+        /* 이모지 마커 스타일 컴포넌트 */
+        .emoji-marker {
+            font-size: 28px;
+            text-align: center;
+            user-select: none;
+            cursor: pointer;
+            filter: drop-shadow(0px 3px 4px rgba(0,0,0,0.3));
+            animation: bounce 0.4s ease-out;
+        }
+
+        /* 말풍선(인포윈도우) 커스텀 스타일 */
+        .custom-overlay {
+            background: white;
+            border: 2px solid var(--cafe-latte);
+            border-radius: 10px;
+            padding: 12px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+            position: relative;
+            bottom: 45px; /* 핀 위에 예쁘게 띄우기 위함 */
+            min-width: 180px;
+        }
+        .custom-overlay::after {
+            content: '';
+            position: absolute;
+            bottom: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-width: 8px 8px 0;
+            border-style: solid;
+            border-color: white transparent;
+            display: block;
+            width: 0;
+        }
+        .custom-overlay h4 {
+            font-size: 14px;
+            color: var(--cafe-roast);
+            margin-bottom: 4px;
+        }
+        .custom-overlay p {
+            font-size: 11px;
+            color: #666;
+            margin-bottom: 8px;
+        }
+        .custom-overlay a {
+            display: inline-block;
+            font-size: 11px;
+            color: white;
+            background: var(--cafe-latte);
+            padding: 3px 8px;
+            border-radius: 4px;
+            text-decoration: none;
+        }
+        .custom-overlay a:hover {
+            background: var(--cafe-roast);
+        }
+
+        @keyframes bounce {
+            0% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+            100% { transform: translateY(0); }
+        }
     </style>
 </head>
 <body>
@@ -174,11 +236,11 @@
 
 <script>
     let map;
-    let currentMarker;
+    let markers = [];         // 생성된 모든 마커를 저장할 배열
+    let activeOverlay = null; // 현재 지도에 열려있는 말풍선 객체 저장 변수
     let currentTab = 'brand'; 
     let rawSearchData = [];   
 
-    // 브랜드 커피숍 키워드 리스트
     const brandKeywords = ['스타벅스', '메가커피', '이디야', '더벤티', '빽다방', '할리스', '컴포즈', '투썸', '폴바셋'];
 
     kakao.maps.load(function() {
@@ -198,23 +260,19 @@
             navigator.geolocation.getCurrentPosition(function(position) {
                 const lat = position.coords.latitude;
                 const lon = position.coords.longitude;
-                const locPosition = new kakao.maps.LatLng(lat, lon);
-                
-                displayMarker(locPosition);
-                map.setCenter(locPosition);
-            }, function(error) {
-                console.log("위치 차단됨: 기본 서울시청을 보여줍니다.");
+                map.setCenter(new kakao.maps.LatLng(lat, lon));
             });
         }
     }
 
-    function displayMarker(locPosition) {
-        if (currentMarker) currentMarker.setMap(null);
-
-        currentMarker = new kakao.maps.Marker({
-            map: map,
-            position: locPosition
-        });
+    // 기존에 지도에 그려진 모든 마커와 말풍선 지우기
+    function clearMarkers() {
+        markers.forEach(m => m.setMap(null));
+        markers = [];
+        if (activeOverlay) {
+            activeOverlay.setMap(null);
+            activeOverlay = null;
+        }
     }
 
     function switchTab(tabType) {
@@ -232,6 +290,7 @@
     function displayFilteredResults() {
         const listEl = document.getElementById('resultList');
         listEl.innerHTML = ''; 
+        clearMarkers(); // 새 탭 누를 때 기존 핀 싹 청소
 
         const bounds = new kakao.maps.LatLngBounds();
         let displayCount = 0;
@@ -244,14 +303,61 @@
 
             displayCount++;
 
+            // 1. 리스트 아이템 추가
             const itemEl = document.createElement('li');
             itemEl.className = 'result-item';
-            itemEl.innerHTML = `<strong>☕ ${place.place_name}</strong><small>${place.address_name}</small>`;
+            
+            // 리스트 왼쪽에 매칭되는 이모지 붙여주기
+            const currentEmoji = isBrand ? '☕' : '🧋';
+            itemEl.innerHTML = `<strong>${currentEmoji} ${place.place_name}</strong><small>${place.address_name}</small>`;
             
             const placePos = new kakao.maps.LatLng(place.y, place.x);
+
+            // 2. 카카오 지도 커스텀 이모지 핀(CustomOverlay 방식) 생성
+            const markerContent = document.createElement('div');
+            markerContent.className = 'emoji-marker';
+            markerContent.innerText = currentEmoji;
+
+            const customMarker = new kakao.maps.CustomOverlay({
+                position: placePos,
+                content: markerContent,
+                clickable: true
+            });
+
+            customMarker.setMap(map);
+            markers.push(customMarker); // 마커 관리 배열에 저장
+
+            // 3. 핀을 클릭했을 때 나타날 장소 설명 말풍선 디자인 정의
+            const infoContent = `
+                <div class="custom-overlay">
+                    <h4>${place.place_name}</h4>
+                    <p>${place.address_name}</p>
+                    <a href="https://place.map.kakao.com/${place.id}" target="_blank">상세정보 보기</a>
+                </div>
+            `;
+
+            const infoOverlay = new kakao.maps.CustomOverlay({
+                position: placePos,
+                content: infoContent,
+                yAnchor: 1
+            });
+
+            // 핀 클릭 시 말풍선 띄우는 함수
+            function openInfoWindow() {
+                if (activeOverlay) activeOverlay.setMap(null); // 기존에 열린게 있으면 닫기
+                infoOverlay.setMap(map);
+                activeOverlay = infoOverlay; // 현재 열린 말풍선으로 기록
+                map.panTo(placePos); // 화면을 부드럽게 중심 이동
+            }
+
+            // 마커 클릭 이벤트 연동
+            markerContent.onclick = function() {
+                openInfoWindow();
+            };
+
+            // 왼쪽 리스트 클릭 시 이벤트 연동
             itemEl.onclick = function() {
-                map.setCenter(placePos);
-                displayMarker(placePos);
+                openInfoWindow();
             };
 
             listEl.appendChild(itemEl);
