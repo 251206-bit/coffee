@@ -33,6 +33,7 @@
             display: flex;
             width: 100%;
             height: 100vh;
+            position: relative;
         }
 
         /* 왼쪽 사이드바 */
@@ -56,8 +57,14 @@
             text-shadow: 1px 1px 0px #fff, 2px 2px 0px var(--cafe-border);
         }
 
+        /* 검색창 + 버튼 가로 배치 */
+        .search-input-wrapper {
+            display: flex;
+            gap: 8px;
+        }
+
         .search-box input {
-            width: 100%;
+            flex: 1;
             padding: 15px;
             border: 2px solid var(--cafe-latte);
             border-radius: 12px;
@@ -70,6 +77,21 @@
         .search-box input:focus {
             border-color: var(--cafe-roast);
             box-shadow: 0 0 10px rgba(111, 78, 55, 0.2);
+        }
+
+        /* 검색 버튼 🔍 */
+        .search-btn {
+            padding: 0 18px;
+            background: var(--cafe-roast);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 18px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .search-btn:hover {
+            background: #543a29;
         }
 
         /* 탭 스타일 */
@@ -137,10 +159,40 @@
             color: #eeeeee;
         }
 
-        /* 오른쪽 지도 */
-        #map {
+        /* 오른쪽 지도 부모 컨테이너 */
+        .map-wrapper {
             flex-grow: 1;
             height: 100%;
+            position: relative;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 내 위치 버튼 GPS 🎯 */
+        .gps-btn {
+            position: absolute;
+            bottom: 30px;
+            right: 30px;
+            width: 50px;
+            height: 50px;
+            background: white;
+            border: 2px solid var(--cafe-latte);
+            border-radius: 50%;
+            font-size: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 5;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            transition: 0.2s;
+        }
+        .gps-btn:hover {
+            transform: scale(1.1);
+            background: #FAF6F0;
         }
 
         /* 스크롤바 커스텀 */
@@ -167,11 +219,11 @@
             background: white;
             border: 2px solid var(--cafe-latte);
             border-radius: 10px;
-            padding: 12px;
+            padding: 15px;
             box-shadow: 0 4px 10px rgba(0,0,0,0.15);
             position: relative;
-            bottom: 45px; /* 핀 위에 예쁘게 띄우기 위함 */
-            min-width: 180px;
+            bottom: 50px; /* 핀 위에 예쁘게 띄우기 위함 */
+            min-width: 200px;
         }
         .custom-overlay::after {
             content: '';
@@ -189,6 +241,7 @@
             font-size: 14px;
             color: var(--cafe-roast);
             margin-bottom: 4px;
+            padding-right: 20px; /* 닫기 버튼 공간 마련 */
         }
         .custom-overlay p {
             font-size: 11px;
@@ -208,6 +261,22 @@
             background: var(--cafe-roast);
         }
 
+        /* 오버레이 닫기 버튼 (X) */
+        .close-overlay-btn {
+            position: absolute;
+            top: 10px;
+            right: 12px;
+            font-size: 14px;
+            font-weight: bold;
+            color: #999;
+            cursor: pointer;
+            border: none;
+            background: none;
+        }
+        .close-overlay-btn:hover {
+            color: var(--cafe-roast);
+        }
+
         @keyframes bounce {
             0% { transform: translateY(0); }
             50% { transform: translateY(-10px); }
@@ -221,7 +290,10 @@
     <div class="sidebar">
         <div class="search-box">
             <h2>☕ 카페인 수혈 지도 🌿</h2>
-            <input type="text" id="keyword" placeholder="지금 필요한 커피나 카페를 검색해봐!">
+            <div class="search-input-wrapper">
+                <input type="text" id="keyword" placeholder="지금 필요한 커피나 카페를 검색해봐!">
+                <button class="search-btn" onclick="searchPlaces()">🔍</button>
+            </div>
         </div>
         
         <div class="tab-container">
@@ -231,7 +303,11 @@
 
         <ul id="resultList"></ul>
     </div>
-    <div id="map"></div>
+
+    <div class="map-wrapper">
+        <div id="map"></div>
+        <button class="gps-btn" onclick="setCenterToMyLocation()" title="내 위치로 이동">🎯</button>
+    </div>
 </div>
 
 <script>
@@ -256,12 +332,41 @@
 
         map = new kakao.maps.Map(mapContainer, mapOption);
 
+        // 최초 1회 사용자 위치로 중심 잡기
+        setCenterToMyLocation(false);
+
+        // 지도 빈 곳을 클릭하면 열려있는 말풍선 닫기 기능 추가
+        kakao.maps.event.addListener(map, 'click', function() {
+            closeOverlay();
+        });
+    }
+
+    // 현재 위치(GPS) 기반 중심 이동 함수
+    function setCenterToMyLocation(showPan = true) {
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(function(position) {
                 const lat = position.coords.latitude;
                 const lon = position.coords.longitude;
-                map.setCenter(new kakao.maps.LatLng(lat, lon));
+                const locPosition = new kakao.maps.LatLng(lat, lon);
+                
+                if (showPan) {
+                    map.panTo(locPosition); // 부드럽게 이동
+                } else {
+                    map.setCenter(locPosition); // 즉시 이동
+                }
+            }, function() {
+                alert('위치 정보를 가져올 수 없어 기본 위치로 설정해.');
             });
+        } else {
+            alert('이 브라우저에서는 GPS 기능을 지원하지 않아.');
+        }
+    }
+
+    // 기존 오버레이(말풍선) 닫기 전용 함수
+    function closeOverlay() {
+        if (activeOverlay) {
+            activeOverlay.setMap(null);
+            activeOverlay = null;
         }
     }
 
@@ -269,10 +374,7 @@
     function clearMarkers() {
         markers.forEach(m => m.setMap(null));
         markers = [];
-        if (activeOverlay) {
-            activeOverlay.setMap(null);
-            activeOverlay = null;
-        }
+        closeOverlay();
     }
 
     function switchTab(tabType) {
@@ -290,7 +392,7 @@
     function displayFilteredResults() {
         const listEl = document.getElementById('resultList');
         listEl.innerHTML = ''; 
-        clearMarkers(); // 새 탭 누를 때 기존 핀 싹 청소
+        clearMarkers(); 
 
         const bounds = new kakao.maps.LatLngBounds();
         let displayCount = 0;
@@ -307,13 +409,12 @@
             const itemEl = document.createElement('li');
             itemEl.className = 'result-item';
             
-            // 리스트 왼쪽에 매칭되는 이모지 붙여주기
             const currentEmoji = isBrand ? '☕' : '🧋';
             itemEl.innerHTML = `<strong>${currentEmoji} ${place.place_name}</strong><small>${place.address_name}</small>`;
             
             const placePos = new kakao.maps.LatLng(place.y, place.x);
 
-            // 2. 카카오 지도 커스텀 이모지 핀(CustomOverlay 방식) 생성
+            // 2. 카카오 지도 커스텀 이모지 핀 생성
             const markerContent = document.createElement('div');
             markerContent.className = 'emoji-marker';
             markerContent.innerText = currentEmoji;
@@ -325,15 +426,16 @@
             });
 
             customMarker.setMap(map);
-            markers.push(customMarker); // 마커 관리 배열에 저장
+            markers.push(customMarker); 
 
-            // 3. 핀을 클릭했을 때 나타날 장소 설명 말풍선 디자인 정의
-            const infoContent = `
-                <div class="custom-overlay">
-                    <h4>${place.place_name}</h4>
-                    <p>${place.address_name}</p>
-                    <a href="https://place.map.kakao.com/${place.id}" target="_blank">상세정보 보기</a>
-                </div>
+            // 3. 핀 클릭 시 나타날 말풍선 디자인 (X 닫기 버튼 컴포넌트 추가)
+            const infoContent = document.createElement('div');
+            infoContent.className = 'custom-overlay';
+            infoContent.innerHTML = `
+                <h4>${place.place_name}</h4>
+                <button class="close-overlay-btn" onclick="closeOverlay()">X</button>
+                <p>${place.address_name}</p>
+                <a href="https://place.map.kakao.com/${place.id}" target="_blank">상세정보 보기</a>
             `;
 
             const infoOverlay = new kakao.maps.CustomOverlay({
@@ -344,15 +446,16 @@
 
             // 핀 클릭 시 말풍선 띄우는 함수
             function openInfoWindow() {
-                if (activeOverlay) activeOverlay.setMap(null); // 기존에 열린게 있으면 닫기
+                closeOverlay(); // 기존에 열린게 있으면 먼저 닫기
                 infoOverlay.setMap(map);
                 activeOverlay = infoOverlay; // 현재 열린 말풍선으로 기록
                 map.panTo(placePos); // 화면을 부드럽게 중심 이동
             }
 
             // 마커 클릭 이벤트 연동
-            markerContent.onclick = function() {
+            markerContent.onclick = function(e) {
                 openInfoWindow();
+                if (e.stopPropagation) e.stopPropagation(); // 오버레이 전파 방지
             };
 
             // 왼쪽 리스트 클릭 시 이벤트 연동
@@ -371,28 +474,39 @@
         }
     }
 
+    // 핵심 검색 비즈니스 로직 함수화 (엔터 및 클릭 버튼 연동)
+    function searchPlaces() {
+        const inputEl = document.getElementById('keyword');
+        const ps = new kakao.maps.services.Places();
+        let searchKeyword = inputEl.value.trim();
+
+        if (!searchKeyword) {
+            alert('검색어를 입력해줘! ☕');
+            return;
+        }
+
+        // 검색어 보정 시스템 예외 처리 (이미 단어가 끝에 붙어있거나 브랜드명을 치면 패스)
+        const hasCafeWord = searchKeyword.endsWith('카페') || searchKeyword.endsWith('커피숍') || searchKeyword.endsWith('커피');
+        const isBrandName = brandKeywords.some(brand => searchKeyword.includes(brand));
+
+        if (!hasCafeWord && !isBrandName) {
+            searchKeyword += ' 카페';
+        }
+
+        ps.keywordSearch(searchKeyword, function(data, status) {
+            if (status === kakao.maps.services.Status.OK) {
+                rawSearchData = data; 
+                displayFilteredResults(); 
+            } else {
+                alert('검색 결과가 없어... ☕ 다른 지역을 찾아볼까?');
+            }
+        });
+    }
+
+    // 엔터키 리스너
     document.getElementById('keyword').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
-            const ps = new kakao.maps.services.Places();
-            let searchKeyword = this.value.trim();
-
-            if (!searchKeyword) {
-                alert('검색어를 입력해줘! ☕');
-                return;
-            }
-
-            if(!searchKeyword.endsWith('카페') && !searchKeyword.endsWith('커피숍')) {
-                searchKeyword += ' 카페';
-            }
-
-            ps.keywordSearch(searchKeyword, function(data, status) {
-                if (status === kakao.maps.services.Status.OK) {
-                    rawSearchData = data; 
-                    displayFilteredResults(); 
-                } else {
-                    alert('검색 결과가 없어... ☕ 다른 지역을 찾아볼까?');
-                }
-            });
+            searchPlaces();
         }
     });
 </script>
